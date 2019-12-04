@@ -71,6 +71,46 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 }
 
+//绘制始终的外观
+void DrawClockFace(HDC hdc){
+	const int Sqsize = 20;
+	static POINT pt[]={
+		0,450,		//12点
+		225,390,		//1点
+		390,255,		//2点
+		450,0,		//3点
+		390,-225,	//4点
+		225,-390,	//5点
+		0,-450,		//6点
+		-225,-390,	//7点
+		-390,-255,	//8点
+		-450,0,		//9点
+		-390,225,	//10点
+		-255,390		//11点
+	};
+
+	//选择一个画刷
+	::SelectObject(hdc, ::GetStockObject(BLACK_BRUSH));
+
+	//画12个圆
+	for(int i = 0; i < 12; i++){
+		::Ellipse(hdc, pt[i].x - Sqsize, pt[i].y + Sqsize,
+			pt[i].x + Sqsize, pt[i].y - Sqsize);
+	}
+}
+
+//设置笛卡尔坐标
+void SetIsotropic(HDC hdc, int cx, int cy){
+	//设置坐标系的映射方式，用户自定义，x、y轴逻辑单位相同
+	::SetMapMode(hdc, MM_ISOTROPIC);
+	//设置坐标系逻辑单位
+	::SetWindowExtEx(hdc, 1000, 1000, NULL);
+	//设置x、y轴方向和坐标系包含范围
+	::SetViewportExtEx(hdc, cx, -cy, NULL);
+	//设置原点坐标
+	::SetViewportOrgEx(hdc, cx/2, cy/2, NULL);
+}
+
 //画一个边长为100的正方形，内部以红色画刷填充
 void OnPaint(HWND hwnd){
 	RECT rt;
@@ -90,6 +130,33 @@ void OnPaint(HWND hwnd){
 	::SelectObject(hdc, holdbrush);
 	::DeleteObject(hbrush);
 	::EndPaint(hwnd, &ps);
+}
+
+//画一个椭圆
+void OnPaint2(HWND hwnd){
+	PAINTSTRUCT ps;
+	HDC hdc = ::BeginPaint(hwnd, &ps); 
+	
+	//获取客户区的大小
+	RECT rt;
+	::GetClientRect(hwnd, &rt);
+	int cx = rt.right;
+	int cy = rt.bottom;
+
+	//设置客户区的逻辑大小为 500 乘 500，原点为 (0, 0)
+	//设置坐标映射方式,用户自定义为
+	::SetMapMode(hdc, MM_ANISOTROPIC);
+	//设置逻辑单位
+	::SetWindowExtEx(hdc, 500, 500, NULL);
+	//设置坐标方向，和坐标系的范围
+	::SetViewportExtEx(hdc, cx, cy, NULL);
+	//设置原点坐标
+	::SetViewportOrgEx(hdc, 0, 0, NULL);
+
+	//以整个客户区为边界画一个椭圆
+	::Ellipse(hdc, 0, 0, 500, 500);
+	::EndPaint(hwnd,&ps);
+
 }
 
 //窗口函数
@@ -146,7 +213,18 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM IPar
 			
 			::DeleteObject(hpen);
 #endif
-				OnPaint(hwnd);
+				//OnPaint(hwnd);//画方形
+				//OnPaint2(hwnd);//画椭圆
+
+
+			HDC hdc;
+			PAINTSTRUCT ps;
+			RECT rt;
+			hdc = ::BeginPaint(hwnd, &ps);
+			::GetClientRect(hwnd, &rt);
+			SetIsotropic(hdc, rt.right - rt.left, rt.bottom - rt.top);
+			DrawClockFace(hdc);
+			::EndPaint(hwnd, &ps);
 		}
 		case WM_CHAR:
 		{
