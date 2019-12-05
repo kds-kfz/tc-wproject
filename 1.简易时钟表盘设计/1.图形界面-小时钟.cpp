@@ -8,8 +8,11 @@
 //窗口函数的函数原型
 LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);
 
-//定时器窗口
+//测试: 定时器窗口
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
+//小时钟定时器窗口
+LRESULT CALLBACK WndProc1(HWND, UINT, WPARAM, LPARAM);
 
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow){
@@ -21,7 +24,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	wndclass.cbSize = sizeof(wndclass);			//结构体大小
 	wndclass.style = CS_HREDRAW|CS_VREDRAW;		//从这个窗口派生的窗口具有的风格
 	//wndclass.lpfnWndProc = MainWndProc;			//窗口函数指针
-	wndclass.lpfnWndProc = WndProc;
+	wndclass.lpfnWndProc = WndProc1;
 	wndclass.cbClsExtra = 0;					//没有额外的类内存
 	wndclass.cbWndExtra = 0;					//没有额外的窗口内存
 	wndclass.hInstance = hInstance;				//实例句柄
@@ -215,6 +218,108 @@ void OnPaint2(HWND hwnd){
 	::Ellipse(hdc, 0, 0, 500, 500);
 	::EndPaint(hwnd,&ps);
 
+}
+
+//使用GDI函数画时针、分针、秒针
+void DrawHand(HDC hdc, int nLength, int nWidth, int nDegrees, COLORREF clrColor){
+	//将角度nDegrees转化为弧度，2 * 3.1415926 / 360 = 0.0174533
+	double nReadians = (double)nDegrees * 0.0174533;
+
+	//计算坐标
+	POINT pt[2];
+	pt[0].x = (int)(nLength * sin(nReadians));
+	pt[0].y = (int)(nLength * cos(nReadians));
+	pt[1].x = - pt[0].x/5;
+	pt[1].y = - pt[0].y/5;
+
+	//创建画笔，并选入DC结构体
+	HPEN hPen = ::CreatePen(PS_SOLID, nWidth, clrColor);
+	HPEN hOldPen = (HPEN)::SelectObject(hdc, hPen);
+
+	//划线
+	::MoveToEx(hdc, pt[0].x, pt[0].y, NULL);
+	::LineTo(hdc, pt[1].x, pt[1].y);
+
+	::SelectObject(hdc, hOldPen);
+	::DeleteObject(hPen);
+}
+
+//上一次windows通知时间
+static int s_nPreHour;		//小时
+static int s_nPreMinute;	//分钟
+static int s_nPreSecond;	//秒
+
+//窗口客户区的大小
+static int s_cxClient;
+static int s_cyClient;
+
+//是否位于最顶层
+static BOOL s_bTopMost;
+
+//时钟定时器编号
+#define IDT_CLOCK 1
+
+LRESULT CALLBACK WndProc1(HWND hwnd, UINT message, WPARAM wParam, LPARAM IParam){
+	switch(message){
+	case WM_CREATE:
+		{
+			SYSTEMTIME time;
+			//设置时间
+			::GetLocalTime(&time);
+			s_nPreHour = time.wHour%12;
+			s_nPreMinute = time.wMinute;
+			s_nPreSecond = time.wSecond;
+			//创建定时器
+			::SetTimer(hwnd, IDT_CLOCK, 1000, NULL);
+			return 0;
+		}
+	case WM_CLOSE:
+		{
+			::KillTimer(hwnd, IDT_CLOCK);
+			::DestroyWindow(hwnd);
+			return 0;
+		}
+	case WM_DESTROY:
+		{
+			::PostQuitMessage(0);
+			return 0;
+		}
+	case WM_SIZE:
+		{
+			s_cxClient = LOWORD(IParam);
+			s_cyClient = HIWORD(IParam);
+			return 0;
+		}
+	case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hdc = ::BeginPaint(hwnd, &ps);
+
+			//设置坐标系
+			SetIsotropic(hdc, s_cxClient, s_cyClient);
+
+			//绘制时钟外观
+			DrawClockFace(hdc);
+
+			//绘制指针
+			//经过1小时，时针走30度(360/12)，经过1分钟时针走0.5度(30/60)
+			DrawHand(hdc, 200, 8, s_nPreHour * 30 + s_nPreMinute/2, RGB(0, 0, 0));
+			//经过1分钟，分针走6度(360/6)
+			DrawHand(hdc, 400, 6, s_nPreMinute * 6, RGB(0, 0, 0));
+			//经过1秒钟，秒针走6度(360/6)
+			DrawHand(hdc, 400, 6, s_nPreSecond * 6, RGB(0, 0, 0));
+			::EndPaint(hwnd, &ps);
+			return 0;
+		}
+	case WM_TIMER:
+		{
+			//如果窗口处于最小化状态，就什么也不做
+			if(::IsIconic(hwnd)){
+				return;
+			}
+		}
+	}
+	return ::DefWindowProcA(hwnd, message, wParam, IParam);
 }
 
 //窗口函数
