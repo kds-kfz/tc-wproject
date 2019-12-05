@@ -8,6 +8,9 @@
 //窗口函数的函数原型
 LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);
 
+//定时器窗口
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow){
 	char szClassName[] = "MainWClass";
@@ -17,7 +20,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	//用描述主窗口的参数填充 WNDCLASSEX 结构
 	wndclass.cbSize = sizeof(wndclass);			//结构体大小
 	wndclass.style = CS_HREDRAW|CS_VREDRAW;		//从这个窗口派生的窗口具有的风格
-	wndclass.lpfnWndProc = MainWndProc;			//窗口函数指针
+	//wndclass.lpfnWndProc = MainWndProc;			//窗口函数指针
+	wndclass.lpfnWndProc = WndProc;
 	wndclass.cbClsExtra = 0;					//没有额外的类内存
 	wndclass.cbWndExtra = 0;					//没有额外的窗口内存
 	wndclass.hInstance = hInstance;				//实例句柄
@@ -69,6 +73,60 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	//当getmessage返回false 是程序结束,把值传给 PostQuitMessage
 	return msg.wParam;
 
+}
+
+#define IDT_TIMER1 1
+//定时器
+LRESULT __stdcall WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM IParam){
+	static int nNum;//计数
+	static int bSetTimer;//指示是否安装了定时器
+	char szText[56];
+	PAINTSTRUCT ps;
+	HDC hdc;
+	switch(message){
+	case WM_CREATE:
+		bSetTimer = FALSE;
+		break;
+	case WM_PAINT:
+		hdc = ::BeginPaint(hWnd, &ps);
+		wsprintf(szText, "计数: %d", nNum);
+		::TextOutA(hdc, 10, 10, szText, strlen(szText));
+		::EndPaint(hWnd, &ps);
+		break;
+	case WM_TIMER:
+		if(wParam == IDT_TIMER1){
+			hdc = ::GetDC(hWnd);
+			wsprintf(szText, "计数: %d", nNum++);
+			::TextOutA(hdc, 10, 10, szText, strlen(szText));
+
+			//发一声"嘟"的声音
+			::MessageBeep(MB_OK);
+		}
+		break;
+	case WM_LBUTTONDOWN:
+		if(bSetTimer){
+			//撤销一个已经安装的定时器
+			::KillTimer(hWnd, IDT_TIMER1);
+			bSetTimer = FALSE;
+		}else{
+			//安装一个时间周期是250ms的定时器
+			if(::SetTimer(hWnd, IDT_TIMER1, 250, NULL) == NULL){
+				::MessageBoxA(hWnd, "安装定时器失败", "03Timer", MB_OK);
+			}else{
+				bSetTimer = TRUE;
+			}
+		}
+		break;
+	case WM_CLOSE:
+		if(bSetTimer){
+			::KillTimer(hWnd, IDT_TIMER1);
+		}
+		break;
+	case WM_DESTROY:
+		::PostQuitMessage(0);
+		break;
+	}
+	return ::DefWindowProcA(hWnd, message, wParam, IParam);
 }
 
 //绘制始终的外观
