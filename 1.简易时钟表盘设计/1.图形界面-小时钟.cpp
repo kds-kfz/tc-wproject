@@ -30,7 +30,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	wndclass.hInstance = hInstance;				//实例句柄
 	wndclass.hIcon = ::LoadIcon(hInstance, (LPSTR)IDI_TYPER);				//使用预定义图标
 	wndclass.hCursor = ::LoadCursor(NULL, IDC_ARROW);				//使用预定义的光标
-	wndclass.hbrBackground = (HBRUSH)::GetStockObject(WHITE_BRUSH);	//使用白色背景画刷
+	wndclass.hbrBackground = (HBRUSH)::GetStockObject(COLOR_3DFACE);	//使用白色背景画刷
 	wndclass.lpszMenuName = (LPSTR)IDR_TYPER;//不指定菜单
 	wndclass.lpszClassName = szClassName;//窗口类的名称
 	wndclass.hIconSm = NULL;//没有类的小图标
@@ -315,7 +315,44 @@ LRESULT CALLBACK WndProc1(HWND hwnd, UINT message, WPARAM wParam, LPARAM IParam)
 		{
 			//如果窗口处于最小化状态，就什么也不做
 			if(::IsIconic(hwnd)){
-				return;
+				return 0;
+			}
+			//获取系统时间
+			SYSTEMTIME time;
+			::GetLocalTime(&time);
+
+			//建立坐标系
+			HDC hdc = ::GetDC(hwnd);
+			//设置坐标系
+			SetIsotropic(hdc, s_cxClient, s_cyClient);
+
+			//以COLOR_3DFACE 为背景就可以擦除指针了
+			//因为窗口背景颜色是 COLOR_3DFACE
+			COLORREF crfColor = ::GetSysColor(COLOR_3DFACE);
+
+			//如果分钟改变的话就擦除时针和分针
+			if(time.wMinute != s_nPreMinute){
+				//擦除时针和分针
+				
+				DrawHand(hdc, 200, 8, s_nPreHour * 30 + s_nPreMinute / 2, crfColor);
+				DrawHand(hdc, 400, 6, s_nPreMinute * 6, crfColor);
+				s_nPreHour = time.wHour;
+				s_nPreMinute = time.wMinute;
+				
+			}
+			
+			//如果秒针改变的话就擦除秒针，然后重画所有针
+			if(time.wSecond != s_nPreSecond){
+				//擦除秒针
+				DrawHand(hdc, 400, 1, s_nPreSecond * 6, crfColor);
+
+				//重画所有针
+				DrawHand(hdc, 400, 1, time.wSecond * 6, RGB(0, 0, 0));
+				DrawHand(hdc, 200, 8, time.wHour * 30 + time.wMinute / 2, RGB(0, 0, 0));
+				DrawHand(hdc, 400, 6, time.wMinute * 6, RGB(0, 0, 0));
+				s_nPreSecond = time.wSecond;
+				return 0;
+			
 			}
 		}
 	}
