@@ -5,6 +5,9 @@
 #include "3.一个简单的打字程序.h"
 #include<string>
 
+const int IDM_TOPMOST = 100;
+const int IDM_HELP = 101;
+
 //窗口函数的函数原型
 LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -38,16 +41,16 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	//注册这个窗口类
 	::RegisterClassExA(&wndclass);
 
-	//创建主窗口
+	//创建并显示主窗口
 	HWND hwnd = ::CreateWindowEx(
 		0,//扩展样式
 		szClassName,		//类名
-		"挂载测试客户端",	//标题
-		WS_OVERLAPPEDWINDOW,//窗口风格
-		CW_USEDEFAULT,		//初始 x 坐标
-		CW_USEDEFAULT,		//初始 y 坐标
-		CW_USEDEFAULT,		//宽度
-		CW_USEDEFAULT,		//高度
+		"时钟",	//标题
+		WS_POPUP|WS_SYSMENU|WS_SIZEBOX,//窗口风格
+		100,		//初始 x 坐标
+		100,		//初始 y 坐标
+		300,		//宽度
+		300,		//高度
 		NULL,				//父窗口句柄
 		NULL,				//菜单句柄
 		hInstance,			//程序实例句柄
@@ -271,6 +274,12 @@ LRESULT CALLBACK WndProc1(HWND hwnd, UINT message, WPARAM wParam, LPARAM IParam)
 			s_nPreSecond = time.wSecond;
 			//创建定时器
 			::SetTimer(hwnd, IDT_CLOCK, 1000, NULL);
+
+			//创建自定义菜单
+			HMENU hSysMenu = ::GetSystemMenu(hwnd, FALSE);
+			::AppendMenuA(hSysMenu, MF_SEPARATOR, 0, NULL);
+			::AppendMenuA(hSysMenu, MF_STRING, IDM_TOPMOST, "总再最前");
+			::AppendMenuA(hSysMenu, MF_STRING, IDM_HELP, "帮助");
 			return 0;
 		}
 	case WM_CLOSE:
@@ -355,6 +364,42 @@ LRESULT CALLBACK WndProc1(HWND hwnd, UINT message, WPARAM wParam, LPARAM IParam)
 			
 			}
 		}
+		case WM_NCHITTEST://鼠标消息
+		{
+			UINT nHitTest;
+			nHitTest = ::DefWindowProcA(hwnd, message, wParam, IParam);
+			//如果鼠标左键按下，GetAsyncKeyState返回值小于0
+			if(nHitTest == HTCLIENT && ::GetAsyncKeyState(MK_LBUTTON) < 0){
+				nHitTest = HTCAPTION;
+			}
+			return nHitTest;
+		}
+		case WM_CONTEXTMENU://鼠标右键按下
+			{
+				POINT pt;
+				pt.x = LOWORD(IParam);
+				pt.y = HIWORD(IParam);
+				{
+					//获取系统菜单的句柄
+					HMENU hSysMenu = ::GetSystemMenu(hwnd, FALSE);
+					//弹出系统菜单,TrackPopupMenu 返回所选菜单的id，菜单id大于0
+					int nID = ::TrackPopupMenu(hSysMenu, TPM_LEFTALIGN|TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, NULL);
+					if(nID>0){
+						::SendMessageA(hwnd, WM_SYSCOMMAND, nID, 0);
+					}
+					return 0;
+				}
+			}
+			case WM_COMMAND://菜单上选择会产生 WM_COMMAND 信号
+				switch(LOWORD(wParam))
+				{
+					case ID_FILE_EXIT:
+					//向hwnd指定的窗口发送一个 WM_CLOSE 消息
+					//并不进入消息队列等待GetMessage函数取出,而是直接传给了窗口函数
+					::SendMessageA(hwnd, WM_CLOSE, 0, 0);
+					break;
+				}
+			return 0;
 	}
 	return ::DefWindowProcA(hwnd, message, wParam, IParam);
 }
