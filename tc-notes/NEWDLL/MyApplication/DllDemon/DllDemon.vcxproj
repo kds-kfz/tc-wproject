@@ -72,6 +72,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>Algorithm.def</ModuleDefinitionFile>
       <ImportLibrary>..\lib\$(TargetName).lib</ImportLibrary>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -34,7 +34,6 @@ __declspec(dllimport)用于Windows中，从别的动态库中声明导入函数、类、对象等供本动
 #define DLL_CAPI __declspec(dllimport)
 #endif
 
-#include<windows.h>
 
 #include<iostream>
 #include<io.h>
@@ -45,7 +44,11 @@ __declspec(dllimport)用于Windows中，从别的动态库中声明导入函数、类、对象等供本动
 #include <atlstr.h>
 using namespace std;
 
-
+//这两个头文件注意先后顺序
+//动态库隐式链接
+#include <winsock2.h>
+#include<windows.h>
+#pragma comment(lib,"ws2_32.lib")
 
 //class _declspec(dllexport) McsfAlgorithm
 class DLL_CAPI McsfAlgorithm
@@ -88,6 +91,304 @@ class DLL_CAPI DirFile
 
 		//显示文件容器内容
 		void Show();
+};
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 套 接 字 处 理 类 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+//这是socket通信结构体，服务端于客户端公用
+#define BUFF_SIZE (1024 * 8)
+#define REQ_MAX_LEN (1024 * 7)
+typedef struct{
+    SOCKET fd;
+    //struct sockaddr_in addr;
+	SOCKADDR_IN addr;
+    //char ip_buf[64];
+}Total_msg;
+
+class DLL_CAPI Socket
+{
+private:
+	string errmsg;			//错误消息
+	char type[4];			//消息类型
+	char buff[BUFF_SIZE];	//缓存内容
+	Total_msg *sfd;			//服务端数据结构
+	Total_msg *cfd;			//客户端数据结构
+public:
+	Socket()
+	{
+		sfd = new Total_msg;
+		cfd = new Total_msg;
+		memset(this->type, 0, sizeof(this->type));
+		//memset(this->buff, 0, sizeof(this->buff));
+		sfd->fd = 0;
+		cfd->fd = 0;
+		errmsg.clear();
+	}
+	
+	char *SocketBuff(){
+		return buff;
+	}
+
+	char *SocketClientBuff(){
+        return buff;
+    }
+	
+	string SocketErrmsg(){
+        return errmsg;
+    }
+
+    char *SocketType(){
+        return this->type;
+    }
+
+	~Socket()
+	{
+		Close();
+	}
+
+	void Close()
+	{
+		if(!SocketServeClose())
+		{
+			cout<<errmsg<<endl;
+		}
+		if(!SocketClientClose())
+		{
+			cout<<errmsg<<endl;
+		}
+		delete []sfd;
+		delete []cfd;
+	}
+
+	BOOL SocketServeClose(){
+		if(sfd->fd < 0){
+			errmsg = "The Serve Sfd was Shuted!";
+			return FALSE;
+		}
+		int ret = closesocket(sfd->fd);
+		if(ret == 0){
+			return TRUE;
+		}else if(ret == -1){
+			errmsg = "SocketServeClose Error:[" + string(strerror(ret)) + "]!";
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	BOOL SocketClientClose(){
+		if(cfd->fd < 0){
+			errmsg = "The Serve Sfd was Shuted!";
+			return FALSE;
+		}
+        
+		int ret = closesocket(cfd->fd);
+		if(ret == 0){
+			return TRUE;
+		}else if(ret == -1){
+			errmsg = "SocketClientClose Error:[" + string(strerror(ret)) + "]!";
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	/**********     SocketServe 服务端     **********/
+	BOOL SocketServeBuild(){
+		WSADATA wsaData;
+		WORD sockVersion = MAKEWORD(2, 2);
+		int err = WSAStartup(sockVersion, &wsaData);
+		if(err != 0)
+		{
+			cout<<"WSAStartup faild"<<endl;
+			return FALSE;
+		}
+
+		sfd->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+		if(sfd->fd == -1){
+			cout<<"SocketServeBuild Fail!\n";
+			return FALSE;
+		}
+		return TRUE;
+	}
+	
+	BOOL SocketServeBind(const char *port, const char *addr){
+		//closesocket（一般不会立即关闭而经历TIME_WAIT的过程）后想继续重用该socket
+		BOOL bReuseaddr = TRUE;
+		setsockopt(sfd->fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&bReuseaddr, sizeof(BOOL));
+
+		sfd->addr.sin_family = AF_INET;
+		sfd->addr.sin_port = htons(atoi(port));
+		//如果服务器是单网卡的，则就是这块网卡的ip地址；如果是多网卡，则是其中的任意一块的ip地址
+		sfd->addr.sin_addr.S_un.S_addr= htonl(INADDR_ANY);
+		//sfd->addr.sin_addr.s_addr = inet_addr(addr);
+		int ret = bind(sfd->fd, (struct sockaddr *)&sfd->addr, sizeof(sfd->addr));
+		if(ret == -1){
+			cout<<"SocketServeBind Fail!\n";
+			return FALSE;
+		}
+		return TRUE;
+	}
+	
+	BOOL SocketServeListen(int backlog){
+		int ret = listen(sfd->fd, backlog);
+		if(ret == -1){
+			cout<<"SocketServeListen Fail!\n";
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	BOOL SocketServeAccept(){
+		//socklen_t c_len = sizeof(sockaddr_in);
+		int c_len = sizeof(sockaddr_in);
+		//cfd->fd = accept(sfd->fd, (struct sockaddr *)&cfd->addr, &c_len);
+		//从连接队列中取第一个连接进行通信
+		cfd->fd = accept(sfd->fd, NULL, NULL);
+		getpeername(cfd->fd,(SOCKADDR *)&cfd->addr, &c_len);
+		if(cfd->fd == -1){
+			errmsg = "SocketServeAccept Fail!";
+			return FALSE;
+		}
+		return TRUE;
+    }
+	
+	string SocketShowAccept(BOOL flag = TRUE){
+		char msg[512] = {};
+		if(flag){
+			sprintf(msg, "client ip[%s], port[%d] Has been Accessed!",
+				inet_ntoa(cfd->addr.sin_addr), ntohs(cfd->addr.sin_port));
+		}else{
+			sprintf(msg, "client ip[%s], port[%d] Has been Disconnecting!",
+				inet_ntoa(cfd->addr.sin_addr), ntohs(cfd->addr.sin_port));
+		}
+		return string(msg);
+	}
+
+	BOOL SocketServeSend(const char *type, void *data){
+		if(!strcmp(type, "01#")){
+			//测试请求类型
+			char *pbuf = buff;
+			memset(pbuf, 0, sizeof(buff));
+			char ResHead[11] = {0};
+			//%lu : long unsigned int 
+			sprintf(ResHead, "%8lu01#", strlen((char *)data));
+			memcpy(pbuf, ResHead, sizeof(ResHead));
+			memcpy(pbuf + 11, (char *)data, strlen((char *)data));
+
+			cout<<"serve send data:"<<buff<<endl;
+			int ret = write(cfd->fd, buff, strlen(buff));
+			//int ret = send(cfd->fd, &(buff), sizeof(Msg_buff), 0);
+			if(ret < 0){
+			errmsg = "Server Write To Client Fail!";
+			return FALSE;
+			}
+			return TRUE;
+		}
+		errmsg = "[" + std::string(type) + "]，该服务尚未实现!";
+		return FALSE;
+	}
+
+	BOOL SocketServeSetup(){
+		//8.5秒,有些系统未能精确到微秒
+		//struct timeval tv = {3, 0};
+		struct timeval tv;
+		tv.tv_sec = 8;
+		tv.tv_usec = 500000;
+		#if 0
+		//在send(), recv()过程有时由于网络等原因，收发不能如期进行，可设置收发时限
+		//接受时限, 服务器接收请求，阻塞等待接收，当接收到半网络断开，超时后则需要重新接收
+		//一般不用设置，否则客户端超时，则 accept 处于非阻塞状态
+		if(setsockopt(sfd->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(tv)) == -1){
+			errmsg = "Setup Socket SO_RCVTIMEO Timeout Failed! Error:[" + std::string(strerror(errno)) + "]!";
+			return FALSE;
+		}
+		#endif
+		//发送时限，服务器发送应答，数据过长，或者网络问题，应答超时,则重新发
+		if(setsockopt(sfd->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv, sizeof(tv)) == -1){
+			errmsg = "Setup Socket SO_SNDTIMEO Timeout Failed! Error:[" + std::string(strerror(errno)) + "]!";
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	BOOL SocketServeInit(const char *addr = "127.0.0.0", const char *port = "8080", int backlog = 128){
+		return SocketServeBuild() == FALSE ? FALSE
+			: SocketServeBind(port, addr) == FALSE ? FALSE
+			: SocketServeListen(backlog) == FALSE ? FALSE
+			: SocketServeSetup() == FALSE ? FALSE
+			: TRUE;
+	}
+		
+	//循环读取
+	int SocketServeRead();
+
+	/**********     SocketClient 客户端     **********/
+	BOOL SocketClientBuild(){
+		WSADATA wsaData;
+		WORD sockVersion = MAKEWORD(2, 2);
+		int err = WSAStartup(sockVersion, &wsaData);
+		if(err != 0)
+		{
+			cout<<"WSAStartup faild"<<endl;
+			return FALSE;
+		}
+		//IPPROTO_TCP
+		cfd->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if(cfd->fd == -1){
+			errmsg = "SocketClientBuild Fail!";
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	BOOL SocketClientConnect(const char *addr, const char *port){
+		//memset(&cfd->addr, 0, sizeof(cfd->addr));
+		cfd->addr.sin_family = AF_INET;
+		cfd->addr.sin_port = htons(atoi(port));
+		cfd->addr.sin_addr.S_un.S_addr = inet_addr(addr);
+		//inet_pton(AF_INET, addr, &cfd->addr.sin_addr.s_addr);
+		//int ret = connect(cfd->fd, (struct sockaddr *)(&(cfd->addr)),sizeof(cfd->addr));
+		int ret = connect(cfd->fd, (LPSOCKADDR)(&(cfd->addr)),sizeof(cfd->addr));
+		if(ret == -1){
+			errmsg = "SocketClientConnect Fail!";
+			return FALSE;
+		}else if(ret != 0){
+			errmsg = "SocketClientConnect Error:[" + std::string(strerror(ret)) + "]!";
+			return FALSE;
+		}
+		return TRUE;
+    }
+
+	BOOL SocketClientInit(const char *addr = "127.0.0.1", const char *port = "8080"){
+		return SocketClientBuild() == FALSE ? FALSE
+			: SocketClientConnect(addr, port) == FALSE ? FALSE
+			: TRUE;
+    }
+
+	BOOL SocketClientSend(const char *type, void *data){
+		if(!strcmp(type, "01#")){
+			//测试请求类型
+			char *pbuf = buff;
+			memset(pbuf, 0, sizeof(buff));
+			char ResHead[11] = {0};
+			sprintf(ResHead, "%8lu01#", strlen((char *)data));
+			memcpy(pbuf, ResHead, sizeof(ResHead));
+			memcpy(pbuf + 11, (char *)data, strlen((char *)data));
+
+			cout<<"clint send data: "<<buff<<endl;
+			int ret = write(cfd->fd, buff, strlen(buff));
+			//int ret = send(cfd->fd, &(buff), sizeof(Msg_buff), 0);
+			if(ret < 0){
+				errmsg = "Server Write To Client Fail!";
+				return FALSE;
+			}
+			return TRUE;
+		}
+		errmsg = "[" + std::string(type) + "], 该请求尚未实现!";
+		return FALSE;
+	}
+
+	int SocketClientRead();
+
+	//
 };
 
 //extern "C" _declspec(dllexport) void __stdcall show();
